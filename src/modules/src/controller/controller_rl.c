@@ -42,7 +42,6 @@
 #include "controller.h"
 #include "platform_defaults.h"
 #include "math3d.h"
-#include "rl_policy_params.h"
 
 // =========================
 // Deployment/training config
@@ -76,6 +75,8 @@
 #define OBS_IDX_VEL (OBS_IDX_ROT_MAT + 9)
 #define OBS_DIM (OBS_IDX_VEL + 3)
 #endif
+
+#include "rl_policy_params.h"
 
 
 // =========================
@@ -262,29 +263,45 @@ static void build_obs(float obs[OBS_DIM],
 // Policy forward
 // =========================
 static void policy_forward(const float obs[OBS_DIM], float action_out[ACTOR_OUTPUT_SIZE]) {
-  // Expect 3 Dense layers: (20->H), (H->H), (H->4)
   // NOTE: No dynamic memory; use fixed-size buffers.
-  // Hidden size read from header macros (ACTOR_L0_OUT), but we need compile-time max.
   float h0[ACTOR_L0_OUT];
   float h1[ACTOR_L1_OUT];
 
-  // Layer 0
+  // Layer 0: ReLU
   dense_forward(obs, ACTOR_L0_IN, actor_W0, actor_b0, ACTOR_L0_OUT, h0);
   for (int i = 0; i < ACTOR_L0_OUT; ++i) {
     h0[i] = relu(h0[i]);
   }
 
-  // Layer 1
+  // Layer 1: ReLU
   dense_forward(h0, ACTOR_L1_IN, actor_W1, actor_b1, ACTOR_L1_OUT, h1);
   for (int i = 0; i < ACTOR_L1_OUT; ++i) {
     h1[i] = relu(h1[i]);
   }
 
-  // Output layer
+#if ACTOR_NUM_LAYERS == 2
+  // Layer 2: output
   dense_forward(h1, ACTOR_L2_IN, actor_W2, actor_b2, ACTOR_L2_OUT, action_out);
-  for (int i = 0; i < ACTOR_L2_OUT; ++i) {
-    action_out[i] = tanh_act(action_out[i]);  // policy outputs rotor_vel directly after tanh
+  for (int i = 0; i < ACTOR_OUTPUT_SIZE; ++i) {
+    action_out[i] = tanh_act(action_out[i]);
   }
+#elif ACTOR_NUM_LAYERS == 3
+  float h2[ACTOR_L2_OUT];
+
+  // Layer 2: ReLU
+  dense_forward(h1, ACTOR_L2_IN, actor_W2, actor_b2, ACTOR_L2_OUT, h2);
+  for (int i = 0; i < ACTOR_L2_OUT; ++i) {
+    h2[i] = relu(h2[i]);
+  }
+
+  // Layer 3: output
+  dense_forward(h2, ACTOR_L3_IN, actor_W3, actor_b3, ACTOR_L3_OUT, action_out);
+  for (int i = 0; i < ACTOR_OUTPUT_SIZE; ++i) {
+    action_out[i] = tanh_act(action_out[i]);
+  }
+#else
+#error "Unsupported ACTOR_NUM_LAYERS; expected 2 or 3"
+#endif
 }
 
 // =========================
