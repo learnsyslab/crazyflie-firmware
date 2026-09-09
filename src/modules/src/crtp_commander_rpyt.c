@@ -35,8 +35,13 @@
 #include "num.h"
 #include "position_controller.h"
 
-#define MIN_THRUST  1000
-#define MAX_THRUST  60000
+// Lower bound below which the thrust setpoint is treated as zero. The 7000 is
+// THRUST_MIN / THRUST_MAX * UINT16_MAX (see platform_defaults_cf2.h), i.e. the
+// point below which the measured thrust curves become too noisy to trust the
+// battery compensation fit. Kept as a literal so it also applies when
+// CONFIG_ENABLE_THRUST_BAT_COMPENSATED is off and THRUST_MIN is undefined.
+#define MIN_THRUST  7000
+#define MAX_THRUST  UINT16_MAX  // Full PWM range
 
 /**
  * CRTP commander rpyt packet format
