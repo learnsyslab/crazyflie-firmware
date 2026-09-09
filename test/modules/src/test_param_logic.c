@@ -374,6 +374,7 @@ void testWriteProcessUint8(void) {
   testPk.data[0] = 0;
   testPk.data[1] = 0;
   testPk.data[2] = expected;
+  testPk.size = 3; // 2 bytes id + 1 byte value
 
   crtpSendPacketBlock_StubWithCallback(crtpReply);
 
@@ -382,6 +383,55 @@ void testWriteProcessUint8(void) {
 
   // Assert
   TEST_ASSERT_EQUAL_UINT8(expected, myUint8);
+}
+
+void testWriteProcessBurstSetsAllParams(void) {
+  // Fixture
+  CRTPPacket testPk;
+  uint8_t expectedUint8 = 17;
+  uint16_t expectedUint16 = 4711;
+
+  myUint8 = 0;
+  myUint16 = 0;
+
+  // Id 0 is myUint8 (1 byte), id 1 is myUint16 (2 bytes)
+  testPk.data[0] = 0;
+  testPk.data[1] = 0;
+  testPk.data[2] = expectedUint8;
+  testPk.data[3] = 1;
+  testPk.data[4] = 0;
+  memcpy(&testPk.data[5], &expectedUint16, sizeof(expectedUint16));
+  testPk.size = 7; // (2 + 1) + (2 + 2)
+
+  crtpSendPacketBlock_StubWithCallback(crtpReply);
+
+  // Test
+  paramWriteProcess(&testPk);
+
+  // Assert
+  TEST_ASSERT_EQUAL_UINT8(expectedUint8, myUint8);
+  TEST_ASSERT_EQUAL_UINT16(expectedUint16, myUint16);
+}
+
+void testWriteProcessBurstIgnoresUnknownParam(void) {
+  // Fixture
+  CRTPPacket testPk;
+  uint16_t unknownId = 0xFFF;
+
+  myUint8 = 0;
+
+  memcpy(&testPk.data[0], &unknownId, sizeof(unknownId));
+  testPk.data[2] = 42;
+  testPk.size = 3;
+
+  crtpSendPacketBlock_StubWithCallback(crtpReply);
+
+  // Test
+  paramWriteProcess(&testPk);
+
+  // Assert - nothing written, error reported to the client
+  TEST_ASSERT_EQUAL_UINT8(0, myUint8);
+  TEST_ASSERT_EQUAL_UINT8(PARAM_NOT_FOUND, replyPk.data[2]);
 }
 
 static size_t storageFetchMockFunc(const char *key, void* buffer, size_t length)

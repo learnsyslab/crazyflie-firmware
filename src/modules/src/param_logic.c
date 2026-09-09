@@ -328,30 +328,42 @@ void paramTOCProcess(CRTPPacket *p, int command)
 
 void paramWriteProcess(CRTPPacket *p)
 {
+  // First pass: validate all (id, value) pairs in the packet
   uint16_t id;
-  memcpy(&id, &p->data[0], 2);
-
-  void* valptr = &p->data[2];
   int index;
+  int cursor = 0;
+  int n_params = 0;
+  while (cursor + 2 <= p->size) {
+    memcpy(&id, &p->data[cursor], 2);
+    index = variableGetIndex(id);
 
-  index = variableGetIndex(id);
+    if (index < 0) {
+      p->data[2] = PARAM_NOT_FOUND;
+      p->size = 3;
+      crtpSendPacketBlock(p);
+      return;
+    }
 
-  if (index < 0) {
-    p->data[2] = PARAM_NOT_FOUND;
-    p->size = 3;
+    if (params[index].type & PARAM_RONLY)
+      return;
 
-    crtpSendPacketBlock(p);
-    return;
+    cursor += 2 + paramGetLen(index);
+    n_params++;  
   }
 
-  if (params[index].type & PARAM_RONLY)
-    return;
+  // Second pass: set all params and notify
+  cursor = 0;
+  while (cursor + 2 <= p->size) {
+    memcpy(&id, &p->data[cursor], 2);
+    index = variableGetIndex(id);
 
-  paramSet(index, valptr);
+    cursor += 2 + paramSet(index, &p->data[cursor + 2]);
+    paramNotifyChanged(index);
+  }
 
-  crtpSendPacketBlock(p);
-
-  paramNotifyChanged(index);
+  if (n_params < 2) {
+    crtpSendPacketBlock(p);
+  }
 }
 
 static void paramNotifyChanged(int index) {
