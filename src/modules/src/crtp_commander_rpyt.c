@@ -35,13 +35,11 @@
 #include "num.h"
 #include "position_controller.h"
 
-// Lower bound below which the thrust setpoint is treated as zero. The 7000 is
-// THRUST_MIN / THRUST_MAX * UINT16_MAX (see platform_defaults_cf2.h), i.e. the
-// point below which the measured thrust curves become too noisy to trust the
-// battery compensation fit. Kept as a literal so it also applies when
-// CONFIG_ENABLE_THRUST_BAT_COMPENSATED is off and THRUST_MIN is undefined.
+// Thrust below this is treated as zero. 7000 = THRUST_MIN / THRUST_MAX * UINT16_MAX
+// (platform_defaults_cf2.h); below it the measured thrust curves are too noisy.
+// With CONFIG_ENABLE_THRUST_BAT_COMPENSATED, motorsCompensateBatteryVoltage()
+// clips per motor at THRUST_MIN anyway. Literal so it also works without it.
 #define MIN_THRUST  7000
-#define MAX_THRUST  UINT16_MAX  // Full PWM range
 
 /**
  * CRTP commander rpyt packet format
@@ -140,7 +138,7 @@ void crtpCommanderRpytDecodeSetpoint(setpoint_t *setpoint, CRTPPacket *pk)
   if (thrustLocked || (rawThrust < MIN_THRUST)) {
     setpoint->thrust = 0;
   } else {
-    setpoint->thrust = fminf(rawThrust, MAX_THRUST);
+    setpoint->thrust = rawThrust;
   }
 
   if (altHoldMode) {
