@@ -79,6 +79,17 @@ def test_collective_force_uses_platform_legacy_force_code():
     assert 0.0 < control.thrust < 65535.0
 
 
+@pytest.mark.parametrize(
+    ("collective_force", "expected_code"),
+    ((0.0, 0.0), (0.2, 16383.75), (0.4, 32767.5), (0.8, 65535.0)),
+)
+def test_collective_force_known_points(collective_force, expected_code):
+    mass = collective_force / 9.81
+    control = _hover_output(mass, 132000.0)
+
+    assert control.thrust == pytest.approx(expected_code, rel=2e-6, abs=1e-6)
+
+
 def test_mass_thrust_is_compatible_noop_and_physical_mass_remains_active():
     light = _hover_output(0.040, 1.0)
     same_mass_different_legacy_scalar = _hover_output(0.040, 250000.0)
