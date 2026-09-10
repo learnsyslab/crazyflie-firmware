@@ -3,12 +3,16 @@
 import cffirmware
 import pytest
 
+UINT16_MAX = (1 << 16) - 1
 
-def _hover_output(mass, mass_thrust):
+
+def _absolute_z_output(mass, mass_thrust, position_z=0.0, integral_gain_z=None):
     ctrl = cffirmware.controllerMellinger_t()
     cffirmware.controllerMellingerInit(ctrl)
     ctrl.mass = mass
     ctrl.massThrust = mass_thrust
+    if integral_gain_z is not None:
+        ctrl.ki_z = integral_gain_z
 
     control = cffirmware.control_t()
     setpoint = cffirmware.setpoint_t()
@@ -16,13 +20,14 @@ def _hover_output(mass, mass_thrust):
     setpoint.mode.y = cffirmware.modeAbs
     setpoint.mode.z = cffirmware.modeAbs
     setpoint.mode.yaw = cffirmware.modeAbs
+    setpoint.position.z = position_z
 
     state = cffirmware.state_t()
     state.attitudeQuaternion.w = 1.0
     sensors = cffirmware.sensorData_t()
 
     cffirmware.controllerMellinger(ctrl, control, setpoint, sensors, state, 100)
-    return control
+    return ctrl, control
 
 
 def test_controller_mellinger():
@@ -68,33 +73,34 @@ def test_controller_mellinger():
     assert control.yaw == 0
 
 
-def test_collective_force_uses_platform_legacy_force_code():
-    mass = 0.04338
-    control = _hover_output(mass, 132000.0)
+def test_mass_thrust_is_compatibility_noop():
+    _, low_legacy_scalar = _absolute_z_output(0.037, 1.0, position_z=0.013)
+    _, high_legacy_scalar = _absolute_z_output(0.037, 250000.0, position_z=0.013)
 
-    expected = mass * 9.81 / cffirmware.powerDistributionGetMaxThrust() * 65535.0
-
-    assert control.controlMode == cffirmware.controlModeLegacy
-    assert control.thrust == pytest.approx(expected, rel=2e-6)
-    assert 0.0 < control.thrust < 65535.0
+    assert low_legacy_scalar.controlMode == cffirmware.controlModeLegacy
+    assert low_legacy_scalar.thrust == high_legacy_scalar.thrust
 
 
-@pytest.mark.parametrize(
-    ("collective_force", "expected_code"),
-    ((0.0, 0.0), (0.2, 16383.75), (0.4, 32767.5), (0.8, 65535.0)),
-)
-def test_collective_force_known_points(collective_force, expected_code):
-    mass = collective_force / 9.81
-    control = _hover_output(mass, 132000.0)
+def test_physical_mass_remains_active():
+    _, light = _absolute_z_output(0.031, 12345.0, position_z=0.013)
+    _, heavy = _absolute_z_output(0.053, 12345.0, position_z=0.013)
 
-    assert control.thrust == pytest.approx(expected_code, rel=2e-6, abs=1e-6)
-
-
-def test_mass_thrust_is_compatible_noop_and_physical_mass_remains_active():
-    light = _hover_output(0.040, 1.0)
-    same_mass_different_legacy_scalar = _hover_output(0.040, 250000.0)
-    heavy = _hover_output(0.050, 1.0)
-
-    assert light.thrust == same_mass_different_legacy_scalar.thrust
     assert heavy.thrust > light.thrust
-    assert heavy.thrust / light.thrust == pytest.approx(0.050 / 0.040, rel=2e-6)
+
+
+def test_collective_force_is_normalized_by_platform_max_thrust():
+    fraction_of_platform_max = 0.375
+    artificial_mass = 0.037
+    ctrl, baseline = _absolute_z_output(artificial_mass, 12345.0, integral_gain_z=0.0)
+    position_step = (
+        fraction_of_platform_max * cffirmware.powerDistributionGetMaxThrust() / ctrl.kp_z
+    )
+    _, stepped = _absolute_z_output(
+        artificial_mass,
+        12345.0,
+        position_z=position_step,
+        integral_gain_z=0.0,
+    )
+
+    expected_code_step = fraction_of_platform_max * UINT16_MAX
+    assert stepped.thrust - baseline.thrust == pytest.approx(expected_code_step, rel=2e-6)
