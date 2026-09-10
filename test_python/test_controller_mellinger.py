@@ -1,6 +1,29 @@
 #!/usr/bin/env python
 
 import cffirmware
+import pytest
+
+
+def _hover_output(mass, mass_thrust):
+    ctrl = cffirmware.controllerMellinger_t()
+    cffirmware.controllerMellingerInit(ctrl)
+    ctrl.mass = mass
+    ctrl.massThrust = mass_thrust
+
+    control = cffirmware.control_t()
+    setpoint = cffirmware.setpoint_t()
+    setpoint.mode.x = cffirmware.modeAbs
+    setpoint.mode.y = cffirmware.modeAbs
+    setpoint.mode.z = cffirmware.modeAbs
+    setpoint.mode.yaw = cffirmware.modeAbs
+
+    state = cffirmware.state_t()
+    state.attitudeQuaternion.w = 1.0
+    sensors = cffirmware.sensorData_t()
+
+    cffirmware.controllerMellinger(ctrl, control, setpoint, sensors, state, 100)
+    return control
+
 
 def test_controller_mellinger():
 
@@ -43,3 +66,24 @@ def test_controller_mellinger():
     assert control.roll == 0
     assert control.pitch == 0
     assert control.yaw == 0
+
+
+def test_collective_force_uses_platform_legacy_force_code():
+    mass = 0.04338
+    control = _hover_output(mass, 132000.0)
+
+    expected = mass * 9.81 / cffirmware.powerDistributionGetMaxThrust() * 65535.0
+
+    assert control.controlMode == cffirmware.controlModeLegacy
+    assert control.thrust == pytest.approx(expected, rel=2e-6)
+    assert 0.0 < control.thrust < 65535.0
+
+
+def test_mass_thrust_is_compatible_noop_and_physical_mass_remains_active():
+    light = _hover_output(0.040, 1.0)
+    same_mass_different_legacy_scalar = _hover_output(0.040, 250000.0)
+    heavy = _hover_output(0.050, 1.0)
+
+    assert light.thrust == same_mass_different_legacy_scalar.thrust
+    assert heavy.thrust > light.thrust
+    assert heavy.thrust / light.thrust == pytest.approx(0.050 / 0.040, rel=2e-6)

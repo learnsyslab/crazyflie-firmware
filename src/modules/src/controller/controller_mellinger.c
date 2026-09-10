@@ -41,6 +41,7 @@ We added the following:
 #include "log.h"
 #include "position_controller.h"
 #include "controller_mellinger.h"
+#include "power_distribution.h"
 #include "physicalConstants.h"
 #include "platform_defaults.h"
 
@@ -302,7 +303,10 @@ void controllerMellinger(controllerMellinger_t* self, control_t *control, const 
   if (setpoint->mode.z == modeDisable) {
     control->thrust = setpoint->thrust;
   } else {
-    control->thrust = self->massThrust * current_thrust;
+    // The legacy mixer expects a common per-motor desired-force code. The downstream
+    // battery compensation converts this code back to force using THRUST_MAX before
+    // applying the platform-specific inverse motor-voltage curve.
+    control->thrust = current_thrust / powerDistributionGetMaxThrust() * UINT16_MAX;
   }
 
   self->cmd_thrust = control->thrust;
@@ -394,7 +398,7 @@ PARAM_ADD(PARAM_FLOAT | PARAM_PERSISTENT, i_range_z, &g_self.i_range_z)
  */
 PARAM_ADD_CORE(PARAM_FLOAT | PARAM_PERSISTENT, mass, &g_self.mass)
 /**
- * @brief Force to PWM stretch factor
+ * @brief Deprecated force-to-PWM stretch factor (retained as a no-op for compatibility)
  */
 PARAM_ADD_CORE(PARAM_FLOAT | PARAM_PERSISTENT, massThrust, &g_self.massThrust)
 /**
