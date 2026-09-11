@@ -39,12 +39,9 @@ cycle, which is not linear in thrust and dependent on battery voltage.
   is disabled, non-zero thrust is ignored until a packet with thrust 0
   has been received. This prevents the motors from starting on a stale
   or unintended set-point.
-* **Lower bound.** Thrust values below `MIN_THRUST` (7000) are treated as
-  zero. The value is `THRUST_MIN / THRUST_MAX * UINT16_MAX` from
-  `platform_defaults_cf2.h` and marks the point below which the measured
-  thrust curves are too noisy to be useful. When
-  `CONFIG_ENABLE_THRUST_BAT_COMPENSATED` is enabled (default), the same limit is
-  applied again per motor in the battery compensation.
+* **Lower bound.** Thrust values below `MIN_THRUST` are treated as zero. 
+  If `CONFIG_ENABLE_THRUST_BAT_COMPENSATED` is enabled (default), the limit 
+  is computed by `THRUST_MIN / THRUST_MAX * UINT16_MAX`.
 * **Upper bound.** There is no clipping in the commander. The per-motor
   output is capped to the PWM range in the power distribution.
 
@@ -63,16 +60,7 @@ interpreted.
 
 ## Example
 
-Using the python library, send thrust 0 once to unlock, then stream
-set-points:
-
-```python
-cf.commander.send_setpoint(0, 0, 0, 0)
-for _ in range(100):
-    cf.commander.send_setpoint(0.0, 0.0, 0.0, 30000)
-    time.sleep(0.01)
-cf.commander.send_setpoint(0, 0, 0, 0)
-```
+**[ramp.py](https://github.com/bitcraze/crazyflie-demos/tree/main/demos/scripts/cflib/motors/ramp)**: Sends low-level roll/pitch/yaw/thrust set-points directly using the Commander class, ramping thrust up and down.
 
 Set-points must be sent continuously, see the watchdog timeouts in the
 [commander framework](/docs/functional-areas/sensor-to-control/commanders_setpoints.md).

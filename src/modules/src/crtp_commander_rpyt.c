@@ -34,12 +34,14 @@
 #include "FreeRTOS.h"
 #include "num.h"
 #include "position_controller.h"
+#include "platform_defaults.h"
 
-// Thrust below this is treated as zero. 7000 = THRUST_MIN / THRUST_MAX * UINT16_MAX
-// (platform_defaults_cf2.h); below it the measured thrust curves are too noisy.
-// With CONFIG_ENABLE_THRUST_BAT_COMPENSATED, motorsCompensateBatteryVoltage()
-// clips per motor at THRUST_MIN anyway. Literal so it also works without it.
-#define MIN_THRUST  7000
+// Thrust below MIN_THRUST is treated as zero
+#ifdef CONFIG_ENABLE_THRUST_BAT_COMPENSATED
+  #define MIN_THRUST ((uint16_t)(THRUST_MIN / THRUST_MAX * UINT16_MAX))
+#else
+  #define MIN_THRUST 1000
+#endif
 
 /**
  * CRTP commander rpyt packet format
