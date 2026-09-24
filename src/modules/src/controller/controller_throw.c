@@ -91,8 +91,8 @@ static const float DEG2RAD = 0.01745329251994329577f;  // pi/180
 // =========================
 // Internal state
 // =========================
-// Stored as normalized policy output in [-1, 1]; initialized to hover (~0.25)
-static float g_last_actions[4] = {0.25f, 0.25f, 0.25f, 0.25f};
+// Stored as normalized policy output in [-1, 1]; initialized at idle
+static float g_last_actions[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
 
 
 // =========================
@@ -246,10 +246,10 @@ static void policy_forward(const float obs[OBS_DIM], float action_out[ACTOR_OUTP
 // =========================
 void controllerThrowInit(void) {
   // Reset last_actions on each controller switch
-  g_last_actions[0] = 0.25f;
-  g_last_actions[1] = 0.25f;
-  g_last_actions[2] = 0.25f;
-  g_last_actions[3] = 0.25f;
+  g_last_actions[0] = -1.0f;
+  g_last_actions[1] = -1.0f;
+  g_last_actions[2] = -1.0f;
+  g_last_actions[3] = -1.0f;
 
   // Policy params (actor_W0, actor_b0, etc.) are loaded at boot with defaults
   // and can be modified via CRTP params. They persist across controller switches.
