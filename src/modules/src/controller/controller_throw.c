@@ -50,39 +50,12 @@
 // =========================
 
 // Controller Parameters
-static int ctrl_freq_hz = 500;  // controller frequency (matches rotor_vel training: freq=250)
+static int ctrl_freq_hz = 500;  // controller frequency
 
-// thrust = a0 + a1 * rpm + a2 * rpm^2
-// Values are selected at compile time by platform macro
-#if defined(CONFIG_PLATFORM_CF21BL)
-static const float RPM2THRUST_A0 = 0.0f;
-static const float RPM2THRUST_A1 = -3.133427287299859e-7f;
-static const float RPM2THRUST_A2 =  4.407354891648379e-10f;
-#elif defined(CONFIG_PLATFORM_CF2)
-static const float RPM2THRUST_A0 = 0.0f;
-static const float RPM2THRUST_A1 = -5.382196214637237e-7f;
-static const float RPM2THRUST_A2 =  2.4582929831265485e-10f;
-#else
-static const float RPM2THRUST_A0 = 0.0f;
-static const float RPM2THRUST_A1 = -3.133427287299859e-7f;
-static const float RPM2THRUST_A2 =  4.407354891648379e-10f;
-#endif
-
-// Action scaling: policy output in [-1, 1] -> rotor RPM in [ROTOR_RPM_MIN, ROTOR_RPM_MAX]
-// Values are selected at compile time by platform macro
-// TODO: Compute from known min/max thrust and the thrust curve instead of hardcoding
-#if defined(CONFIG_PLATFORM_CF21BL)
-static const float ROTOR_RPM_MIN = 6962.07f;
-static const float ROTOR_RPM_MAX = 21302.27f;
-#elif defined(CONFIG_PLATFORM_CF2)
-static const float ROTOR_RPM_MIN = 7220.81f;
-static const float ROTOR_RPM_MAX = 22093.97f;
-#else
-static const float ROTOR_RPM_MIN = 6962.07f;
-static const float ROTOR_RPM_MAX = 21302.27f;
-#endif
-static const float ROTOR_RPM_SCALE = (ROTOR_RPM_MAX - ROTOR_RPM_MIN) * 0.5f;
-static const float ROTOR_RPM_MEAN  = (ROTOR_RPM_MAX + ROTOR_RPM_MIN) * 0.5f;
+// Action scaling: policy output in [-1, 1] -> thrust per rotor in [THRUST_MIN, THRUST_MAX] (N),
+// the platform's thrust range, as in training
+static const float ROTOR_THRUST_SCALE = (THRUST_MAX - THRUST_MIN) * 0.5f;
+static const float ROTOR_THRUST_MEAN  = (THRUST_MAX + THRUST_MIN) * 0.5f;
 
 // Unit conversion
 static const float DEG2RAD = 0.01745329251994329577f;  // pi/180
@@ -134,7 +107,7 @@ static void dense_forward(const float* x, int in_dim,
 // =========================
 // Observation construction
 // =========================
-// Throw env obs dict (rotor_vel policy, from _obs()):
+// Throw env obs dict (rotor thrust policy, from _obs()):
 // - USE_QUAT=1: "ang_vel" (3), "last_actions" (4), "quat" (4), "vel" (3), "z" (1) => 15 dims
 // - USE_QUAT=0: "ang_vel" (3), "last_actions" (4), "rot_mat" (9), "vel" (3), "z" (1) => 20 dims
 //
@@ -270,25 +243,19 @@ void controllerThrow(control_t *control, const setpoint_t *setpoint, const senso
   float obs[OBS_DIM];
   build_obs(obs, sensors, state);
 
-  // 2. Policy forward -> normalized rotor velocities in [-1, 1]
-  float normalized_rotor_vel[4];
-  policy_forward(obs, normalized_rotor_vel);
+  // 2. Policy forward -> normalized rotor thrusts in [-1, 1]
+  float normalized_thrust[4];
+  policy_forward(obs, normalized_thrust);
 
   // 3. Update last_actions (normalized policy output, used in next obs)
-  g_last_actions[0] = normalized_rotor_vel[0];
-  g_last_actions[1] = normalized_rotor_vel[1];
-  g_last_actions[2] = normalized_rotor_vel[2];
-  g_last_actions[3] = normalized_rotor_vel[3];
+  g_last_actions[0] = normalized_thrust[0];
+  g_last_actions[1] = normalized_thrust[1];
+  g_last_actions[2] = normalized_thrust[2];
+  g_last_actions[3] = normalized_thrust[3];
 
-  // 4. Map policy output [-1,1] -> rotor RPM -> thrust -> normalized forces in [0,1]
+  // 4. Map policy output [-1,1] -> thrust -> normalized forces in [0,1]
   for (int i = 0; i < 4; ++i) {
-    // Scale to RPM: rpm = clip(a, -1, 1) * ((max-min)/2) + ((max+min)/2)
-    const float rpm = clampf(normalized_rotor_vel[i], -1.0f, 1.0f) * ROTOR_RPM_SCALE + ROTOR_RPM_MEAN;
-
-    // Convert RPM to thrust force via quadratic model
-    const float force = RPM2THRUST_A0
-                      + RPM2THRUST_A1 * rpm
-                      + RPM2THRUST_A2 * (rpm * rpm);
+    const float force = clampf(normalized_thrust[i], -1.0f, 1.0f) * ROTOR_THRUST_SCALE + ROTOR_THRUST_MEAN;
 
     // Normalize to [0,1] and clip
     float pwm_norm = force / THRUST_MAX;
